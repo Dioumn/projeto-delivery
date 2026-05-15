@@ -1,13 +1,18 @@
 import sqlite3
 import random
+import pandas as pd
 from datetime import datetime
 
 
 class SistemaDelivery:
 
     def __init__(self):
+
         self.conn = sqlite3.connect("delivery.db")
         self.cursor = self.conn.cursor()
+
+        # ATIVAR FOREIGN KEYS NO SQLITE
+        self.cursor.execute("PRAGMA foreign_keys = ON")
 
     # ==================================================
     # CRIAR TABELAS
@@ -18,37 +23,37 @@ class SistemaDelivery:
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            telefone TEXT,
-            endereco TEXT
+            nome TEXT NOT NULL,
+            telefone TEXT NOT NULL,
+            endereco TEXT NOT NULL
         )
         """)
 
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS restaurantes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            categoria TEXT
+            nome TEXT NOT NULL,
+            categoria TEXT NOT NULL
         )
         """)
 
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS entregadores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            status TEXT
+            nome TEXT NOT NULL,
+            status TEXT NOT NULL
         )
         """)
 
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS pedidos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            id_usuario INTEGER,
-            id_restaurante INTEGER,
-            id_entregador INTEGER,
-            data TEXT,
-            status TEXT,
-            valor_total REAL,
+            id_usuario INTEGER NOT NULL,
+            id_restaurante INTEGER NOT NULL,
+            id_entregador INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            status TEXT NOT NULL,
+            valor_total REAL NOT NULL,
 
             FOREIGN KEY (id_usuario) REFERENCES usuarios(id),
             FOREIGN KEY (id_restaurante) REFERENCES restaurantes(id),
@@ -59,10 +64,10 @@ class SistemaDelivery:
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS itens_pedido (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            id_pedido INTEGER,
-            produto TEXT,
-            quantidade INTEGER,
-            preco REAL,
+            id_pedido INTEGER NOT NULL,
+            produto TEXT NOT NULL,
+            quantidade INTEGER NOT NULL,
+            preco REAL NOT NULL,
 
             FOREIGN KEY (id_pedido) REFERENCES pedidos(id)
         )
@@ -188,7 +193,7 @@ class SistemaDelivery:
             ))
 
     # ==================================================
-    # GERAR ITENS
+    # GERAR ITENS DOS PEDIDOS
     # ==================================================
 
     def gerar_itens(self):
@@ -202,6 +207,9 @@ class SistemaDelivery:
             "Refrigerante"
         ]
 
+        self.cursor.execute("SELECT id FROM pedidos")
+        pedidos_ids = [x[0] for x in self.cursor.fetchall()]
+
         for _ in range(150):
 
             self.cursor.execute("""
@@ -213,7 +221,7 @@ class SistemaDelivery:
             )
             VALUES (?, ?, ?, ?)
             """, (
-                random.randint(1, 100),
+                random.choice(pedidos_ids),
                 random.choice(produtos),
                 random.randint(1, 5),
                 round(random.uniform(10, 60), 2)
@@ -225,11 +233,13 @@ class SistemaDelivery:
 
     def mostrar_tabela(self, nome_tabela):
 
-        print(f"\n===== {nome_tabela.upper()} =====")
+        print(f"===== TABELA {nome_tabela.upper()} =====")
 
         self.cursor.execute(f"SELECT * FROM {nome_tabela}")
 
-        for linha in self.cursor.fetchall():
+        resultados = self.cursor.fetchall()
+
+        for linha in resultados:
             print(linha)
 
     # ==================================================
@@ -238,7 +248,11 @@ class SistemaDelivery:
 
     def consultas(self):
 
-        print("\n===== PEDIDOS DA ANA =====")
+        # ==============================================
+        # CONSULTA 1
+        # ==============================================
+
+        print("===== PEDIDOS DA ANA =====")
 
         self.cursor.execute("""
         SELECT pedidos.id,
@@ -263,7 +277,87 @@ class SistemaDelivery:
         for linha in self.cursor.fetchall():
             print(linha)
 
-        print("\n===== TOTAL GASTO POR CLIENTE =====")
+        # ==============================================
+        # CONSULTA 2
+        # ==============================================
+
+        print("===== PEDIDOS DO RESTAURANTE PIZZA TOP =====")
+
+        self.cursor.execute("""
+        SELECT pedidos.id,
+               usuarios.nome,
+               pedidos.status
+
+        FROM pedidos
+
+        JOIN usuarios
+            ON pedidos.id_usuario = usuarios.id
+
+        JOIN restaurantes
+            ON pedidos.id_restaurante = restaurantes.id
+
+        WHERE restaurantes.nome = 'Pizza Top'
+        """)
+
+        for linha in self.cursor.fetchall():
+            print(linha)
+
+        # ==============================================
+        # CONSULTA 3
+        # ==============================================
+
+        print("===== ENTREGAS DO ENTREGADOR KAIO =====")
+
+        self.cursor.execute("""
+        SELECT pedidos.id,
+               usuarios.nome,
+               restaurantes.nome
+
+        FROM pedidos
+
+        JOIN usuarios
+            ON pedidos.id_usuario = usuarios.id
+
+        JOIN restaurantes
+            ON pedidos.id_restaurante = restaurantes.id
+
+        JOIN entregadores
+            ON pedidos.id_entregador = entregadores.id
+
+        WHERE entregadores.nome = 'Kaio'
+        AND pedidos.status = 'entregue'
+        """)
+
+        for linha in self.cursor.fetchall():
+            print(linha)
+
+        # ==============================================
+        # CONSULTA 4
+        # ==============================================
+
+        print("===== PEDIDOS EM ANDAMENTO =====")
+
+        self.cursor.execute("""
+        SELECT pedidos.id,
+               usuarios.nome,
+               pedidos.status
+
+        FROM pedidos
+
+        JOIN usuarios
+            ON pedidos.id_usuario = usuarios.id
+
+        WHERE pedidos.status != 'entregue'
+        """)
+
+        for linha in self.cursor.fetchall():
+            print(linha)
+
+        # ==============================================
+        # CONSULTA 5
+        # ==============================================
+
+        print("===== TOTAL GASTO POR CLIENTE =====")
 
         self.cursor.execute("""
         SELECT usuarios.nome,
@@ -284,7 +378,37 @@ class SistemaDelivery:
             print(linha)
 
     # ==================================================
-    # FINALIZAR
+    # EXPORTAR PARA EXCEL
+    # ==================================================
+
+    def exportar_excel(self):
+
+        tabelas = [
+            "usuarios",
+            "restaurantes",
+            "entregadores",
+            "pedidos",
+            "itens_pedido"
+        ]
+
+        with pd.ExcelWriter("delivery.xlsx") as writer:
+
+            for tabela in tabelas:
+
+                query = f"SELECT * FROM {tabela}"
+
+                df = pd.read_sql_query(query, self.conn)
+
+                df.to_excel(
+                    writer,
+                    sheet_name=tabela,
+                    index=False
+                )
+
+        print("\nBanco exportado para delivery.xlsx")
+
+    # ==================================================
+    # FINALIZAR SISTEMA
     # ==================================================
 
     def finalizar(self):
@@ -305,14 +429,20 @@ sistema.inserir_dados()
 sistema.gerar_pedidos()
 sistema.gerar_itens()
 
+# EXIBIR TABELAS
 sistema.mostrar_tabela("usuarios")
 sistema.mostrar_tabela("restaurantes")
 sistema.mostrar_tabela("entregadores")
 sistema.mostrar_tabela("pedidos")
 sistema.mostrar_tabela("itens_pedido")
 
+# EXECUTAR CONSULTAS
 sistema.consultas()
 
+# EXPORTAR PARA EXCEL
+sistema.exportar_excel()
+
+# FINALIZAR
 sistema.finalizar()
 
-print("\nSistema executado com sucesso!")
+print("Sistema executado com sucesso!")
